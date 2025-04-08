@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cómo es mi estado hoy</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
+    <script>
+        tailwind.config = { /* ... (configuración igual que antes) ... */
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        loveRed: '#ff4d4d',
+                        happyGreen: '#4CAF50',
+                        warningYellow: '#ffeb3b',
+                        dangerOrange: '#ff9800',
+                    },
+                    boxShadow: {
+                        'slider-thumb': '0 0 5px rgba(0, 0, 0, 0.3)',
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ... (estilos iguales que antes) ... */
+        
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 80%;
+            height: 25px;
+            background: linear-gradient(to right, #4CAF50, #ffeb3b, #ff9800, #ff4d4d);
+            outline: none;
+            opacity: 0.9;
+            transition: opacity .2s;
+            border-radius: 12px;
+            cursor: pointer;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 35px;
+            height: 35px;
+            background: #ffffff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #ccc;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 35px;
+            height: 35px;
+            background: #ffffff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #ccc;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+        }
+        
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        body {
+            background-color: #f7fafc;
+        }
+        
+        .app-container {
+            min-height: 100vh;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 flex items-center justify-center font-sans">
+
+    <div class="app-container w-full max-w-md p-8 bg-white rounded-lg shadow-xl text-center">
+        <h1 class="text-3xl font-bold mb-2 text-gray-800">🌡️ Termómetro del Amor 🌡️</h1>
+        <p class="text-sm text-gray-500 mb-6">(¡Sincronizado con la Nube de Google!)</p>
+        <div id="mood-display" class="text-8xl mb-6 transition-transform duration-300 ease-in-out transform hover:scale-110">🤔</div>
+        <div class="flex justify-between text-2xl px-4 mb-1"><span>😇</span><span>🤬</span></div>
+        <input type="range" id="mood-slider" min="0" max="100" value="50" class="w-full h-4 rounded-lg cursor-pointer">
+        <p id="mood-message" class="mt-6 text-lg font-semibold text-gray-700 h-10 flex items-center justify-center px-4">Cargando estado desde Google Sheets...</p>
+        <button id="save-button" class="mt-6 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out transform hover:-translate-y-1 opacity-50 cursor-not-allowed" disabled>Guardando...</button>
+        <p class="text-xs text-gray-400 mt-2">(Se guarda solito al soltar el deslizador)</p>
+    </div>
+
+    <script>
+        // --- URL de tu Web App de Google Apps Script ---
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyox1mnzGH7RJVL1fnWaltm_5ZDd-f_nzqjNkkrhO542npJdkktf1yFmR0z5r6YY7GV/exec"; // ¡ASEGÚRATE QUE ES CORRECTA!
+
+        // --- Elementos del DOM, Estado, Datos de Humor (igual que antes) ---
+        const slider = document.getElementById('mood-slider'); /* ... (resto igual) ... */
+        const moodDisplay = document.getElementById('mood-display');
+        const moodMessage = document.getElementById('mood-message');
+        const saveButton = document.getElementById('save-button');
+        let isSaving = false;
+        let debounceTimer;
+        const moods = [{
+            emoji: '😄',
+            message: '¡Modo Cariño Activado! Zona segura.',
+            color: 'text-happyGreen'
+        }, {
+            emoji: '😊',
+            message: 'Sonrisas y calma. ¡Todo bien!',
+            color: 'text-green-600'
+        }, {
+            emoji: '🙂',
+            message: 'Neutral... ¿Quizás un chocolate ayudaría?',
+            color: 'text-yellow-600'
+        }, {
+            emoji: '😐',
+            message: 'Hmm... Terreno neutral, pisa con cuidado.',
+            color: 'text-warningYellow'
+        }, {
+            emoji: '😠',
+            message: '¡Alerta Naranja! Se avecina tormenta...',
+            color: 'text-dangerOrange'
+        }, {
+            emoji: '🤬',
+            message: '¡EVACUAR! ¡ALERTA ROJA MÁXIMA!',
+            color: 'text-loveRed'
+        }];
+
+        // --- Funciones ---
+        function updateUI(value) { /* ... (igual que antes) ... */
+            let moodIndex = 0;
+            if (value <= 10) moodIndex = 0;
+            else if (value <= 30) moodIndex = 1;
+            else if (value <= 50) moodIndex = 2;
+            else if (value <= 70) moodIndex = 3;
+            else if (value <= 90) moodIndex = 4;
+            else moodIndex = 5;
+            const currentMood = moods[moodIndex];
+            moodDisplay.textContent = currentMood.emoji;
+            moodMessage.textContent = currentMood.message;
+            moodMessage.className = 'mt-6 text-lg font-semibold h-10 flex items-center justify-center px-4';
+            moodMessage.classList.add(currentMood.color);
+            slider.value = value;
+        }
+
+        async function saveMoodToSheet(value) {
+            console.log(">>> saveMoodToSheet llamada con valor:", value);
+            if (isSaving) {
+                console.log("   ...guardado ya en curso, saliendo.");
+                return;
+            }
+            if (!SCRIPT_URL || SCRIPT_URL === "URL_DE_TU_WEB_APP_AQUÍ") { /* ... (manejo de error URL) ... */
+                console.error("Error: La URL del Apps Script no está configurada.");
+                moodMessage.textContent = "Error: Falta configurar la URL del script.";
+                moodMessage.classList.add("text-red-500");
+                saveButton.textContent = "Error de Config.";
+                saveButton.classList.add('bg-red-500', 'hover:bg-red-700');
+                saveButton.disabled = true;
+                return;
+            }
+
+            isSaving = true;
+            saveButton.textContent = "Guardando...";
+            saveButton.disabled = true;
+            saveButton.classList.add('opacity-50', 'cursor-not-allowed');
+            saveButton.classList.remove('bg-blue-500', 'hover:bg-blue-700', 'bg-red-500', 'hover:bg-red-700', 'bg-green-500');
+            saveButton.classList.add('bg-yellow-500');
+
+            console.log(`   Intentando fetch POST a: ${SCRIPT_URL} con valor (texto plano): ${value}`); // DEBUG
+
+            let response;
+            try {
+                const fetchOptions = {
+                    method: 'POST',
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    headers: {
+                        // ** CAMBIO CLAVE: Usar text/plain **
+                        'Content-Type': 'text/plain;charset=utf-8',
+                    },
+                    // ** CAMBIO CLAVE: Enviar el valor directamente como string **
+                    body: String(value)
+                };
+                console.log("   Opciones Fetch:", fetchOptions); // DEBUG
+
+                response = await fetch(SCRIPT_URL, fetchOptions);
+                console.log("   Respuesta fetch recibida, status:", response.status); // DEBUG
+
+                const responseText = await response.text();
+                console.log("   Respuesta fetch (texto):", responseText); // DEBUG
+
+                if (!response.ok) {
+                    throw new Error(`Error HTTP ${response.status}: ${response.statusText}. Respuesta: ${responseText}`);
+                }
+
+                // La respuesta del script sigue siendo JSON, así que la parseamos
+                const result = JSON.parse(responseText);
+                if (result.success) {
+                    console.log('   Valor guardado:', result.savedMood);
+                    saveButton.textContent = "¡Guardado!";
+                    saveButton.classList.remove('bg-yellow-500');
+                    saveButton.classList.add('bg-green-500');
+                    setTimeout(() => {
+                        saveButton.textContent = "¡Estado Anímico Registrado!";
+                        saveButton.classList.remove('bg-green-500', 'opacity-50', 'cursor-not-allowed');
+                        saveButton.classList.add('bg-blue-500', 'hover:bg-blue-700');
+                        saveButton.disabled = false;
+                    }, 1500);
+                } else {
+                    throw new Error(result.error || 'Apps Script devolvió un error sin mensaje específico.');
+                }
+
+            } catch (error) {
+                console.error('   Error DETALLADO al guardar en Google Sheet:', error); // DEBUG
+                let errorMessage = "Error al guardar.";
+                if (error instanceof SyntaxError) {
+                    errorMessage = "Error: Respuesta del script no es JSON válido.";
+                    console.error("   La respuesta probablemente fue HTML (página de error de Google) o texto plano.");
+                } else if (error.message) {
+                    errorMessage = `Error: ${error.message}`;
+                } else {
+                    errorMessage = `Error desconocido: ${error}`;
+                }
+                moodMessage.textContent = errorMessage + " Revisa la consola.";
+                moodMessage.classList.add("text-red-500");
+                saveButton.textContent = "Error al Guardar";
+                saveButton.classList.remove('bg-yellow-500');
+                saveButton.classList.add('bg-red-500', 'hover:bg-red-700');
+                setTimeout(() => {
+                    saveButton.textContent = "¡Estado Anímico Registrado!";
+                    saveButton.classList.remove('bg-red-500', 'hover:bg-red-700', 'opacity-50', 'cursor-not-allowed');
+                    saveButton.classList.add('bg-blue-500', 'hover:bg-blue-700');
+                    saveButton.disabled = false;
+                }, 3000);
+            } finally {
+                console.log("   ...finalizando saveMoodToSheet."); // DEBUG
+                isSaving = false;
+            }
+        }
+
+        async function loadMoodFromSheet() { /* ... (igual que antes) ... */
+            if (!SCRIPT_URL || SCRIPT_URL === "URL_DE_TU_WEB_APP_AQUÍ") { /* ... */
+                console.error("Error: La URL del Apps Script no está configurada.");
+                moodMessage.textContent = "Error: Falta configurar la URL del script.";
+                moodMessage.classList.add("text-red-500");
+                updateUI(50);
+                saveButton.textContent = "Error de Config.";
+                saveButton.classList.add('bg-red-500', 'hover:bg-red-700');
+                saveButton.disabled = true;
+                return;
+            }
+            moodMessage.textContent = "Cargando desde Google...";
+            saveButton.disabled = true;
+            saveButton.classList.add('opacity-50', 'cursor-not-allowed');
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+                const responseText = await response.text();
+                console.log("Respuesta carga (texto):", responseText);
+                if (!response.ok) throw new Error(`Error HTTP ${response.status}: ${response.statusText}. Respuesta: ${responseText}`);
+                const result = JSON.parse(responseText);
+                if (result.success && typeof result.mood === 'number' && !isNaN(result.mood)) {
+                    console.log('Valor cargado desde Google Sheet:', result.mood);
+                    updateUI(result.mood);
+                } else if (result.success) {
+                    console.warn('Valor no numérico/vacío recibido. Usando defecto.');
+                    updateUI(50);
+                } else {
+                    throw new Error(result.error || 'Apps Script devolvió error al cargar.');
+                }
+            } catch (error) {
+                console.error('Error DETALLADO al cargar desde Google Sheet:', error);
+                let errorMessage = "No se pudo cargar.";
+                if (error instanceof SyntaxError) errorMessage = "Error: Respuesta de carga no es JSON.";
+                else if (error.message) errorMessage = `Error carga: ${error.message}`;
+                else errorMessage = `Error carga: ${error}`;
+                moodMessage.textContent = errorMessage + " Usando valor por defecto.";
+                moodMessage.classList.add("text-red-500");
+                updateUI(50);
+            } finally {
+                saveButton.textContent = "¡Estado Anímico Registrado!";
+                saveButton.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-red-500', 'hover:bg-red-700');
+                saveButton.classList.add('bg-blue-500', 'hover:bg-blue-700');
+                saveButton.disabled = false;
+            }
+        }
+
+        // --- Event Listeners ---
+        slider.addEventListener('input', (event) => { /* ... (igual que antes, con logs) ... */
+            const currentValue = parseInt(event.target.value, 10);
+            console.log("--- Slider 'input' event --- Valor:", currentValue);
+            updateUI(currentValue);
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                console.log("--- Debounce Timer ejecutado --- Llamando a saveMoodToSheet...");
+                saveMoodToSheet(currentValue);
+            }, 500);
+        });
+        saveButton.addEventListener('click', () => { /* ... (igual que antes) ... */
+            if (!isSaving) {
+                console.log("Botón 'Guardar' presionado.");
+                saveMoodToSheet(parseInt(slider.value, 10));
+            } else {
+                console.log("Guardado en curso.");
+            }
+        });
+
+        // --- Inicialización ---
+        document.addEventListener('DOMContentLoaded', loadMoodFromSheet);
+    </script>
+
+</body>
+
+</html>
